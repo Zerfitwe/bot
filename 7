@@ -1,0 +1,160 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import time
+import os
+
+print("=" * 60)
+print("🔍 ДЕБАГ: Перевірка коментування")
+print("=" * 60)
+
+# Запускаємо браузер
+user_data_dir = os.path.join(os.getcwd(), "chrome_session")
+options = webdriver.ChromeOptions()
+options.add_argument(f"--user-data-dir={user_data_dir}")
+
+driver = webdriver.Chrome(options=options)
+driver.get("https://www.tiktok.com")
+time.sleep(5)
+
+print("\n⚠️ Ви вже залогінені? Натисніть Enter...")
+input()
+
+# ========== 1. ПОШУК ВІДЕО ==========
+print("\n📌 1. Шукаємо відео 'Децкоє питання'...")
+
+try:
+    search = driver.find_element(By.NAME, "q")
+    search.clear()
+    search.send_keys("Децкоє питання")
+    search.send_keys(Keys.RETURN)
+    time.sleep(5)
+    print("   ✅ Пошук виконано!")
+except Exception as e:
+    print(f"   ❌ Помилка: {e}")
+    print("   Спробуйте вручну ввести в пошук 'Децкоє питання'")
+    input("   Натисніть Enter після ручного пошуку...")
+
+# ========== 2. ЗБИРАЄМО ВІДЕО ==========
+print("\n📌 2. Збираємо відео...")
+
+videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+print(f"   Знайдено відео: {len(videos)}")
+
+if len(videos) == 0:
+    print("   ❌ Немає відео! Спробуйте прокрутити сторінку вручну")
+    input("   Після прокрутки натисніть Enter...")
+    videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+    print(f"   Тепер знайдено: {len(videos)}")
+
+# ========== 3. ВІДКРИВАЄМО ПЕРШЕ ВІДЕО ==========
+print("\n📌 3. Відкриваємо перше відео...")
+
+try:
+    driver.execute_script("arguments[0].scrollIntoView();", videos[0])
+    time.sleep(1)
+    videos[0].click()
+    time.sleep(5)
+    print("   ✅ Відео відкрито!")
+except Exception as e:
+    print(f"   ❌ Помилка: {e}")
+    print("   Спробуйте відкрити відео вручну")
+    input("   Натисніть Enter після відкриття відео...")
+
+# ========== 4. ШУКАЄМО ПОЛЕ КОМЕНТАРЯ ==========
+print("\n📌 4. Шукаємо поле коментаря...")
+
+# Спробуємо різні способи знайти поле
+found = False
+
+# Спосіб 1: data-e2e
+try:
+    comment = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-input']")
+    print("   ✅ Знайдено через [data-e2e='comment-input']")
+    found = True
+except:
+    print("   ❌ Не знайдено через data-e2e")
+
+# Спосіб 2: textarea
+if not found:
+    try:
+        comment = driver.find_element(By.TAG_NAME, "textarea")
+        print("   ✅ Знайдено через textarea")
+        found = True
+    except:
+        print("   ❌ Не знайдено через textarea")
+
+# Спосіб 3: всі поля введення
+if not found:
+    try:
+        inputs = driver.find_elements(By.XPATH, "//input | //textarea")
+        print(f"   Знайдено {len(inputs)} полів введення:")
+        for i, inp in enumerate(inputs):
+            try:
+                placeholder = inp.get_attribute("placeholder")
+                print(f"      {i+1}. placeholder: {placeholder}")
+            except:
+                pass
+        found = len(inputs) > 0
+    except:
+        pass
+
+# Спосіб 4: пошук через XPATH
+if not found:
+    try:
+        comment = driver.find_element(By.XPATH, "//div[@contenteditable='true']")
+        print("   ✅ Знайдено через contenteditable")
+        found = True
+    except:
+        print("   ❌ Не знайдено через contenteditable")
+
+# ========== 5. СПРОБУЄМО ВВЕСТИ КОМЕНТАР ==========
+if found:
+    print("\n📌 5. Пробуємо ввести коментар...")
+    try:
+        comment.click()
+        time.sleep(1)
+        comment.send_keys("@Lisscre тестовий коментар")
+        time.sleep(1)
+        print("   ✅ Текст введено!")
+        
+        # Шукаємо кнопку відправки
+        try:
+            submit = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-post']")
+            submit.click()
+            print("   ✅ Коментар відправлено!")
+        except:
+            print("   ❌ Не знайдено кнопку відправки")
+            
+    except Exception as e:
+        print(f"   ❌ Помилка введення: {e}")
+else:
+    print("\n   ❌ НЕ ВДАЛОСЯ ЗНАЙТИ ПОЛЕ КОМЕНТАРЯ")
+
+# ========== 6. ВИВЕДЕННЯ HTML СТРУКТУРИ ==========
+print("\n📌 6. Аналіз сторінки...")
+
+# Знаходимо всі поля введення
+all_inputs = driver.find_elements(By.XPATH, "//input | //textarea | //div[@contenteditable='true']")
+print(f"Всього полів введення: {len(all_inputs)}")
+
+for i, inp in enumerate(all_inputs[:5]):  # Показуємо перші 5
+    try:
+        tag = inp.tag_name
+        classes = inp.get_attribute("class")
+        placeholder = inp.get_attribute("placeholder")
+        print(f"\nПоле {i+1}:")
+        print(f"  Тег: {tag}")
+        print(f"  Класи: {classes[:100] if classes else 'немає'}")
+        print(f"  Placeholder: {placeholder}")
+    except:
+        pass
+
+print("\n" + "=" * 60)
+print("🔍 Подивіться в браузері - чи є поле для коментаря?")
+print("   Воно зазвичай внизу відео, з написом 'Додати коментар'")
+print("=" * 60)
+
+print("\n🔒 Натисніть Enter для завершення...")
+input()
+driver.quit()
