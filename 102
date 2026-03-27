@@ -1,0 +1,116 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import random
+import os
+
+# ==================== НАЛАШТУВАННЯ ====================
+
+PROFILE_URL = "https://www.tiktok.com/@ВАШ_НІК"  # ⚠️ ЗАМІНІТЬ НА СВІЙ ПРОФІЛЬ!
+SWIPE_COUNT = 50  # Скільки відео "перегорнути" (туди-сюди)
+SWIPE_DELAY = (0.3, 0.8)  # Швидкість між свайпами (секунди)
+SCROLL_STEP = 400  # На скільки пікселів прокручувати
+
+def swipe_up(driver):
+    """Гортає вгору (попереднє відео)"""
+    driver.execute_script(f"window.scrollBy(0, -{SCROLL_STEP});")
+    
+def swipe_down(driver):
+    """Гортає вниз (наступне відео)"""
+    driver.execute_script(f"window.scrollBy(0, {SCROLL_STEP});")
+
+def wait_moment(min_sec, max_sec):
+    """Коротка випадкова пауза"""
+    time.sleep(random.uniform(min_sec, max_sec))
+
+print("=" * 70)
+print("📱 БОТ ДЛЯ ШВИДКОГО ПРОГОРТАННЯ ВІДЕО (НАКРУТКА ПЕРЕГЛЯДІВ)")
+print("=" * 70)
+print(f"\n⚠️ ПЕРЕД ЗАПУСКОМ:")
+print(f"   1. Відкрийте свій профіль TikTok вручну")
+print(f"   2. Скопіюйте посилання (https://www.tiktok.com/@ваш_нік)")
+print(f"   3. Вставте його в код замість @ВАШ_НІК")
+print("=" * 70)
+
+# Запуск браузера зі збереженням сесії
+user_data_dir = os.path.join(os.getcwd(), "chrome_session_swipe")
+options = webdriver.ChromeOptions()
+options.add_argument(f"--user-data-dir={user_data_dir}")
+
+driver = webdriver.Chrome(options=options)
+
+print("\n🌐 Відкриваємо TikTok...")
+driver.get("https://www.tiktok.com")
+time.sleep(5)
+
+print("\n⚠️ Увійдіть в акаунт і перейдіть на свій профіль")
+print("   Потім натисніть Enter...")
+input()
+
+# Переходимо в профіль
+print(f"\n🔗 Переходимо за посиланням: {PROFILE_URL}")
+driver.get(PROFILE_URL)
+time.sleep(5)
+
+# Перевіряємо, чи відкрився профіль
+if "user" not in driver.current_url and "profile" not in driver.current_url:
+    print("⚠️ Не схоже, що ви в профілі. Переконайтесь, що посилання правильне.")
+    print("   Спробуйте вставити його вручну в браузері")
+    input("Натисніть Enter, коли будете на сторінці профілю...")
+
+print("\n🎬 Починаємо швидке гортання відео...")
+print("=" * 70)
+
+# Спочатку прокручуємо вниз, щоб завантажити відео
+print("📜 Завантажуємо відео...")
+for _ in range(3):
+    swipe_down(driver)
+    wait_moment(0.5, 1)
+
+total_swipes = 0
+direction = "down"  # починаємо гортати вниз
+
+for i in range(SWIPE_COUNT):
+    print(f"\n🔄 Гортання #{i+1} | Напрямок: {direction}")
+    
+    if direction == "down":
+        swipe_down(driver)
+    else:
+        swipe_up(driver)
+    
+    total_swipes += 1
+    wait_moment(SWIPE_DELAY[0], SWIPE_DELAY[1])
+    
+    # Кожні 10 свайпів змінюємо напрямок (туди-сюди)
+    if (i + 1) % 10 == 0:
+        direction = "up" if direction == "down" else "down"
+        print(f"   🔄 ЗМІНА НАПРЯМКУ: {direction}")
+        
+        # Невелика пауза при зміні напрямку
+        wait_moment(0.8, 1.5)
+
+# Фінальна прокрутка вгору (щоб повернутися до початку)
+print("\n🏁 Завершуємо, повертаємось до початку...")
+for _ in range(5):
+    swipe_up(driver)
+    wait_moment(0.2, 0.4)
+
+print("\n" + "=" * 70)
+print("📊 ПІДСУМКИ")
+print("=" * 70)
+print(f"✅ ЗРОБЛЕНО СВАЙПІВ: {total_swipes}")
+print(f"🔄 ЗМІН НАПРЯМКУ: {total_swipes // 10}")
+print(f"⏱️  ШВИДКІСТЬ: {SWIPE_DELAY[0]}-{SWIPE_DELAY[1]} сек між свайпами")
+print("=" * 70)
+
+print("\n💡 ВАЖЛИВО:")
+print("   - TikTok може обмежити швидкість, якщо гортати занадто швидко")
+print("   - Якщо відео не завантажуються, збільште SWIPE_DELAY")
+print("   - Кожен свайп = перегляд відео")
+
+print("\n🔒 Натисніть Enter для виходу...")
+input()
+driver.quit()
