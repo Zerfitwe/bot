@@ -1,0 +1,329 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import random
+import os
+
+# ==================== НАЛАШТУВАННЯ ====================
+
+SEARCH_QUERY = "Децкоє питання"
+COMMENTS_TOTAL = 15  # Скільки всього коментарів зробити
+MAX_RETRIES = 3  # Скільки разів пробувати коментувати, якщо не вийшло
+
+# Паузи (в секундах)
+DELAY_BEFORE_COMMENT = (3, 6)      # Пауза перед коментарем
+DELAY_AFTER_COMMENT = (8, 12)      # Пауза після коментаря
+DELAY_BETWEEN_VIDEOS = (10, 15)    # Пауза між відео
+TYPE_SPEED = (0.05, 0.15)          # Швидкість друку (сек між буквами)
+WAIT_FOR_COMMENT = (3, 5)          # Час очікування появи коментаря
+
+# Слова для коментарів
+short_words = [
+    "круто", "супер", "топ", "класс", "вау", "мега", "красота",
+    "имба", "кайф", "шедевр", "прекрасно", "огонь", "сила", 
+    "топчик", "крутяк", "зачет", "ништяк", "смешно", "прикольно",
+    "реально", "точно", "🔥", "💯", "😍", "пушка", "имбово"
+]
+
+long_words = [
+    "невероятно", "фантастически", "потрясающе", "захватывающе",
+    "восхитительно", "бесподобно", "безупречно", "великолепно",
+    "лучший", "гениально", "профессионально", "талантливо",
+    "мастерски", "креативно", "оригинально", "уникально",
+    "вдохновляюще", "мотивирующе", "энергично", "динамично"
+]
+
+def generate_comment():
+    """Генерує випадковий коментар"""
+    base = "@Lisscre "
+    if random.choice([True, False]):
+        num = random.randint(1, 3)
+        words = random.sample(short_words, num)
+    else:
+        num = random.randint(2, 4)
+        words = random.sample(long_words, num)
+    return base + " ".join(words)
+
+def type_like_human(element, text):
+    """Друкує текст як людина (з затримками між буквами)"""
+    for char in text:
+        element.send_keys(char)
+        time.sleep(random.uniform(TYPE_SPEED[0], TYPE_SPEED[1]))
+
+def wait_human_like(min_sec, max_sec):
+    """Людська пауза"""
+    time.sleep(random.uniform(min_sec, max_sec))
+
+def scroll_slowly(driver, pixels=300):
+    """Плавно прокручує сторінку"""
+    driver.execute_script(f"window.scrollBy(0, {pixels});")
+    time.sleep(random.uniform(0.5, 1))
+
+def check_comment_added(driver, comment_text):
+    """Перевіряє, чи додався коментар"""
+    try:
+        # Шукаємо коментарі на сторінці
+        comments = driver.find_elements(By.CSS_SELECTOR, "[data-e2e='comment-text']")
+        for comment in comments:
+            if comment_text[:20] in comment.text:
+                return True
+        return False
+    except:
+        return False
+
+def try_to_comment(driver, comment_text, video_number):
+    """Спроба закоментувати з перевіркою"""
+    
+    for attempt in range(MAX_RETRIES):
+        print(f"    Попытка {attempt + 1}/{MAX_RETRIES}...")
+        
+        try:
+            # Шукаємо поле коментаря
+            comment_input = None
+            
+            # Спосіб 1: через клас public-DraftEditor-content
+            try:
+                comment_input = driver.find_element(By.CSS_SELECTOR, "div.public-DraftEditor-content")
+            except:
+                pass
+            
+            # Спосіб 2: через textarea
+            if not comment_input:
+                try:
+                    comment_input = driver.find_element(By.TAG_NAME, "textarea")
+                except:
+                    pass
+            
+            # Спосіб 3: через data-e2e
+            if not comment_input:
+                try:
+                    comment_input = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-input']")
+                except:
+                    pass
+            
+            if not comment_input:
+                print(f"    ❌ Не знайдено поле коментаря")
+                return False
+            
+            # Клікаємо на поле
+            comment_input.click()
+            wait_human_like(0.5, 1)
+            
+            # Очищаємо поле
+            comment_input.clear()
+            wait_human_like(0.3, 0.8)
+            
+            # Друкуємо коментар
+            type_like_human(comment_input, comment_text)
+            wait_human_like(1, 2)
+            
+            # Шукаємо кнопку відправки
+            submit = None
+            try:
+                submit = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-post']")
+            except:
+                try:
+                    submit = driver.find_element(By.XPATH, "//button[contains(text(), 'Отправить')]")
+                except:
+                    pass
+            
+            if submit:
+                submit.click()
+                print(f"    📤 Отправлено...")
+            else:
+                comment_input.send_keys(Keys.RETURN)
+                print(f"    📤 Отправлено через Enter...")
+            
+            # Чекаємо появи коментаря
+            wait_human_like(WAIT_FOR_COMMENT[0], WAIT_FOR_COMMENT[1])
+            
+            # ПЕРЕВІРЯЄМО, ЧИ ДОДАВСЯ КОМЕНТАР
+            if check_comment_added(driver, comment_text):
+                print(f"    ✅ КОМЕНТАР ДОДАНО! (спроба {attempt + 1})")
+                return True
+            else:
+                print(f"    ⚠️ Коментар не з'явився, пробуємо ще...")
+                
+        except Exception as e:
+            print(f"    ❌ Помилка: {str(e)[:50]}")
+        
+        # Пауза перед наступною спробою
+        if attempt < MAX_RETRIES - 1:
+            wait_human_like(2, 4)
+    
+    print(f"    ❌ НЕ ВДАЛОСЯ ЗАКОМЕНТУВАТИ після {MAX_RETRIES} спроб")
+    return False
+
+print("=" * 70)
+print("🤖 TikTok АВТОМАТИЧНИЙ БОТ (з перевіркою коментарів)")
+print("=" * 70)
+print(f"\n📊 НАЛАШТУВАННЯ:")
+print(f"   - Пошук: {SEARCH_QUERY}")
+print(f"   - Коментарів: {COMMENTS_TOTAL}")
+print(f"   - Максимум спроб: {MAX_RETRIES}")
+print(f"   - Пауза між коментарями: {DELAY_AFTER_COMMENT[0]}-{DELAY_AFTER_COMMENT[1]} сек")
+print("=" * 70)
+
+# ========== ЗАПУСК БРАУЗЕРА ==========
+print("\n📥 Запускаємо Chrome...")
+
+user_data_dir = os.path.join(os.getcwd(), "chrome_session")
+options = webdriver.ChromeOptions()
+options.add_argument(f"--user-data-dir={user_data_dir}")
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+
+driver = webdriver.Chrome(options=options)
+driver.get("https://www.tiktok.com")
+time.sleep(5)
+
+print("\n⚠️ Увійдіть в TikTok вручну і натисніть Enter...")
+print("   (Це потрібно зробити один раз)")
+input()
+
+# ========== ПОШУК ВІДЕО ==========
+print(f"\n🔍 Шукаємо: {SEARCH_QUERY}")
+
+try:
+    search = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.NAME, "q"))
+    )
+    search.clear()
+    search.send_keys(SEARCH_QUERY)
+    search.send_keys(Keys.RETURN)
+    time.sleep(5)
+    print("✅ Пошук виконано!")
+except Exception as e:
+    print(f"⚠️ Помилка пошуку: {e}")
+    print("Зробіть пошук вручну і натисніть Enter...")
+    input()
+
+# ========== ЗБИРАЄМО ВІДЕО ==========
+print("\n📹 Збираємо відео...")
+
+for i in range(3):
+    scroll_slowly(driver, 800)
+    wait_human_like(1, 2)
+
+videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+print(f"Знайдено відео: {len(videos)}")
+
+if len(videos) == 0:
+    print("❌ Відео не знайдено!")
+    driver.quit()
+    exit()
+
+# ========== ОСНОВНИЙ ЦИКЛ КОМЕНТУВАННЯ ==========
+print(f"\n🚀 Починаємо коментувати...")
+print("=" * 70)
+
+comments_done = 0
+video_index = 0
+skipped_videos = 0
+
+while comments_done < COMMENTS_TOTAL:
+    try:
+        # Оновлюємо список відео якщо треба
+        if video_index >= len(videos):
+            print("\n📜 Прокручуємо сторінку для завантаження нових відео...")
+            scroll_slowly(driver, 1000)
+            wait_human_like(2, 3)
+            videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+            print(f"Тепер знайдено: {len(videos)} відео")
+            if video_index >= len(videos):
+                print("⚠️ Відео закінчилися!")
+                break
+        
+        print(f"\n{'='*60}")
+        print(f"📹 ВІДЕО #{comments_done + 1} з {COMMENTS_TOTAL}")
+        print(f"{'='*60}")
+        
+        # Отримуємо URL відео
+        video_url = videos[video_index].get_attribute("href")
+        print(f"  🔗 Відкриваємо відео...")
+        
+        # Відкриваємо відео
+        driver.get(video_url)
+        wait_human_like(4, 6)
+        
+        # Перевіряємо чи відео відкрилося
+        if "video" not in driver.current_url:
+            print(f"  ❌ Не вдалося відкрити відео")
+            video_index += 1
+            continue
+        
+        print(f"  ✅ Відео відкрито!")
+        
+        # Пауза перед коментарем
+        print(f"  ⏱️ Пауза перед коментарем...")
+        wait_human_like(DELAY_BEFORE_COMMENT[0], DELAY_BEFORE_COMMENT[1])
+        
+        # Генеруємо коментар
+        comment_text = generate_comment()
+        print(f"  📝 Коментар: {comment_text}")
+        
+        # Пробуємо закоментувати з перевіркою
+        success = try_to_comment(driver, comment_text, comments_done + 1)
+        
+        if success:
+            comments_done += 1
+            
+            # Пауза після успішного коментаря
+            print(f"  ⏱️ Пауза після коментаря...")
+            wait_human_like(DELAY_AFTER_COMMENT[0], DELAY_AFTER_COMMENT[1])
+        else:
+            skipped_videos += 1
+            print(f"  ⚠️ Пропускаємо це відео")
+            wait_human_like(3, 5)
+        
+        # Закриваємо відео (повертаємось до стрічки)
+        print(f"  🔙 Повертаємось до стрічки...")
+        driver.back()
+        wait_human_like(3, 5)
+        
+        # Переходимо до наступного відео
+        video_index += 1
+        
+        # Пауза між відео
+        if comments_done < COMMENTS_TOTAL:
+            print(f"  ⏱️ Пауза перед наступним відео...")
+            wait_human_like(DELAY_BETWEEN_VIDEOS[0], DELAY_BETWEEN_VIDEOS[1])
+        
+        # Кожні 3 коментарі прокручуємо сторінку
+        if comments_done % 3 == 0 and comments_done > 0:
+            scroll_slowly(driver, 500)
+            
+    except Exception as e:
+        print(f"  ❌ ПОМИЛКА: {str(e)[:80]}")
+        try:
+            driver.back()
+        except:
+            pass
+        wait_human_like(3, 5)
+        video_index += 1
+
+# ========== ПІДСУМКИ ==========
+print("\n" + "=" * 70)
+print("📊 ПІДСУМКИ")
+print("=" * 70)
+print(f"✅ ЗРОБЛЕНО КОМЕНТАРІВ: {comments_done}")
+print(f"📹 ПЕРЕГЛЯНУТО ВІДЕО: {comments_done + skipped_videos}")
+print(f"⏭️ ПРОПУЩЕНО ВІДЕО: {skipped_videos}")
+print(f"❌ НЕ ВДАЛОСЯ: {COMMENTS_TOTAL - comments_done}")
+print("=" * 70)
+
+# Зберігаємо лог
+with open("comments_log.txt", "a", encoding="utf-8") as f:
+    f.write("\n" + "=" * 70 + "\n")
+    f.write(f"Сесія: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    f.write(f"Зроблено коментарів: {comments_done}\n")
+    f.write(f"Пропущено відео: {skipped_videos}\n")
+    f.write("=" * 70 + "\n")
+
+print("\n💾 Лог збережено у comments_log.txt")
+print("\n🔒 Натисніть Enter для виходу...")
+input()
+driver.quit()
