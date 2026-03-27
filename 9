@@ -1,0 +1,259 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import random
+import os
+
+# ==================== НАЛАШТУВАННЯ ====================
+
+SEARCH_QUERY = "Децкоє питання"
+COMMENTS_PER_SESSION = 30  # Скільки всього коментарів зробити
+DELAY_BETWEEN_COMMENTS = (5, 8)  # Пауза між коментарями (секунди)
+
+# Слова для коментарів
+short_words = [
+    "круто", "супер", "топ", "класс", "вау", "мега", "красота",
+    "имба", "кайф", "шедевр", "прекрасно", "огонь", "сила", 
+    "топчик", "крутяк", "зачет", "ништяк", "смешно", "прикольно",
+    "реально", "точно", "🔥", "💯", "😍", "пушка", "имбово"
+]
+
+long_words = [
+    "невероятно", "фантастически", "потрясающе", "захватывающе",
+    "восхитительно", "бесподобно", "безупречно", "великолепно",
+    "лучший", "гениально", "профессионально", "талантливо",
+    "мастерски", "креативно", "оригинально", "уникально"
+]
+
+def generate_comment():
+    """Генерує випадковий коментар"""
+    base = "@Lisscre "
+    if random.choice([True, False]):
+        num = random.randint(1, 3)
+        words = random.sample(short_words, num)
+    else:
+        num = random.randint(2, 4)
+        words = random.sample(long_words, num)
+    return base + " ".join(words)
+
+print("=" * 70)
+print("🤖 TikTok КОММЕНТАТОР - КОМЕНТУЄ ВСІ ВІДЕО ПІДРЯД")
+print("=" * 70)
+
+# Запуск браузера з сесією
+user_data_dir = os.path.join(os.getcwd(), "chrome_session")
+options = webdriver.ChromeOptions()
+options.add_argument(f"--user-data-dir={user_data_dir}")
+
+driver = webdriver.Chrome(options=options)
+driver.get("https://www.tiktok.com")
+time.sleep(5)
+
+print("\n⚠️ Ви вже залогінені? Якщо так - натисніть Enter...")
+input()
+
+# ========== ПОШУК ВІДЕО ==========
+print(f"\n🔍 Шукаємо: {SEARCH_QUERY}")
+
+try:
+    search = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.NAME, "q"))
+    )
+    search.clear()
+    search.send_keys(SEARCH_QUERY)
+    search.send_keys(Keys.RETURN)
+    time.sleep(5)
+    print("✅ Пошук виконано!")
+except Exception as e:
+    print(f"❌ Помилка пошуку: {e}")
+    print("Спробуйте ввести запит вручну і натисніть Enter")
+    input()
+
+# ========== ЗБИРАЄМО ВСІ ВІДЕО ==========
+print("\n📹 Збираємо всі відео...")
+
+# Прокручуємо сторінку вниз, щоб завантажити більше відео
+for scroll in range(3):
+    driver.execute_script("window.scrollBy(0, 1000);")
+    time.sleep(2)
+
+videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+print(f"Знайдено відео: {len(videos)}")
+
+if len(videos) == 0:
+    print("❌ Відео не знайдено!")
+    driver.quit()
+    exit()
+
+# ========== КОМЕНТУЄМО ВСІ ВІДЕО ПІДРЯД ==========
+print(f"\n🚀 Починаємо коментувати всі відео ({min(COMMENTS_PER_SESSION, len(videos))} відео)...\n")
+print("=" * 70)
+
+comments_done = 0
+failed_count = 0
+total_to_comment = min(COMMENTS_PER_SESSION, len(videos))
+
+for video_index in range(total_to_comment):
+    print(f"\n{'='*60}")
+    print(f"📹 ВІДЕО #{video_index + 1} з {total_to_comment}")
+    print(f"{'='*60}")
+    
+    try:
+        # Оновлюємо список відео кожного разу (на випадок зміни)
+        if video_index > 0:
+            videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+            if video_index >= len(videos):
+                print("⚠️ Відео закінчилися!")
+                break
+        
+        # Прокручуємо до відео
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", videos[video_index])
+        time.sleep(1)
+        
+        # Клікаємо на відео
+        print(f"  🖱️ Відкриваємо відео {video_index + 1}...")
+        videos[video_index].click()
+        time.sleep(4)
+        
+        # ========== КОМЕНТУЄМО ==========
+        print(f"  💬 Шукаємо поле коментаря...")
+        
+        # Шукаємо поле коментаря
+        comment_input = None
+        
+        # Спосіб 1: через клас public-DraftEditor-content
+        try:
+            comment_input = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.public-DraftEditor-content"))
+            )
+            print(f"  ✅ Знайдено поле коментаря!")
+        except:
+            pass
+        
+        # Спосіб 2: через data-e2e
+        if not comment_input:
+            try:
+                comment_input = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-input']")
+                print(f"  ✅ Знайдено через data-e2e")
+            except:
+                pass
+        
+        # Спосіб 3: через textarea
+        if not comment_input:
+            try:
+                comment_input = driver.find_element(By.TAG_NAME, "textarea")
+                print(f"  ✅ Знайдено через textarea")
+            except:
+                pass
+        
+        if comment_input:
+            # Клікаємо на поле
+            driver.execute_script("arguments[0].click();", comment_input)
+            time.sleep(1)
+            
+            # Генеруємо коментар
+            comment_text = generate_comment()
+            print(f"  📝 Коментар: {comment_text}")
+            
+            # Вводимо текст
+            try:
+                comment_input.send_keys(comment_text)
+            except:
+                driver.execute_script("arguments[0].innerText = arguments[1];", comment_input, comment_text)
+            
+            time.sleep(2)
+            
+            # Шукаємо кнопку відправки
+            submit = None
+            try:
+                submit = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-post']")
+            except:
+                try:
+                    submit = driver.find_element(By.XPATH, "//button[contains(text(), 'Отправить')]")
+                except:
+                    pass
+            
+            if submit:
+                submit.click()
+                print(f"  ✅ КОМЕНТАР ВІДПРАВЛЕНО!")
+                comments_done += 1
+                failed_count = 0
+                time.sleep(2)
+            else:
+                print(f"  ⚠️ Не знайдено кнопку, пробуємо Enter...")
+                try:
+                    comment_input.send_keys(Keys.RETURN)
+                    print(f"  ✅ Відправлено через Enter!")
+                    comments_done += 1
+                    failed_count = 0
+                except:
+                    print(f"  ❌ Не вдалося відправити")
+                    failed_count += 1
+        else:
+            print(f"  ❌ Не знайдено поле коментаря!")
+            failed_count += 1
+        
+        # ========== ЗАКРИВАЄМО ВІДЕО ==========
+        print(f"  🔙 Закриваємо відео...")
+        try:
+            close = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+            close.click()
+        except:
+            # Якщо не знайшли кнопку закриття, повертаємось назад
+            driver.back()
+        
+        time.sleep(2)
+        
+        # ========== ПАУЗА МІЖ КОМЕНТАРЯМИ ==========
+        delay = random.uniform(DELAY_BETWEEN_COMMENTS[0], DELAY_BETWEEN_COMMENTS[1])
+        print(f"  ⏱️ Пауза {delay:.1f} сек перед наступним відео...")
+        time.sleep(delay)
+        
+        # Кожні 3 відео прокручуємо сторінку
+        if (video_index + 1) % 3 == 0:
+            driver.execute_script("window.scrollBy(0, 500);")
+            time.sleep(2)
+            print(f"  📜 Прокручуємо сторінку...")
+        
+        # Якщо багато помилок - зупиняємось
+        if failed_count >= 5:
+            print(f"\n⚠️ Занадто багато помилок ({failed_count}). Зупиняємось...")
+            break
+            
+    except Exception as e:
+        print(f"  ❌ ПОМИЛКА: {str(e)[:80]}")
+        failed_count += 1
+        
+        # Спроба закрити відео
+        try:
+            close = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+            close.click()
+        except:
+            driver.back()
+        
+        time.sleep(3)
+
+# ========== ПІДСУМКИ ==========
+print("\n" + "=" * 70)
+print("📊 ПІДСУМКИ")
+print("=" * 70)
+print(f"✅ ЗРОБЛЕНО КОМЕНТАРІВ: {comments_done} з {total_to_comment}")
+print(f"📹 ПЕРЕГЛЯНУТО ВІДЕО: {comments_done}")
+print(f"❌ НЕ ВДАЛОСЯ: {total_to_comment - comments_done}")
+print("=" * 70)
+
+# Зберігаємо лог
+with open("comments_log.txt", "a", encoding="utf-8") as f:
+    f.write("\n" + "=" * 70 + "\n")
+    f.write(f"Сесія: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    f.write(f"Зроблено коментарів: {comments_done}\n")
+    f.write(f"Переглянуто відео: {comments_done}\n")
+    f.write("=" * 70 + "\n")
+
+print("\n💾 Лог збережено у comments_log.txt")
+print("\n🔒 Натисніть Enter для виходу...")
+input()
+driver.quit()
