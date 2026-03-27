@@ -1,0 +1,421 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import time
+import random
+import string
+from datetime import datetime
+import os
+
+# ==================== НАЛАШТУВАННЯ ====================
+
+# Налаштування TikTok
+SEARCH_QUERY = "Децкоє питання"  # тема відео
+COMMENTS_PER_ACCOUNT = 10  # скільки коментарів на акаунт (10-15)
+VIDEOS_TO_COMMENT = 15  # загальна кількість відео для коментування
+
+# Налаштування затримок
+DELAY_BETWEEN_COMMENTS = (1, 3)  # від 1 до 3 секунд між коментарями
+DELAY_BETWEEN_VIDEOS = (3, 5)  # від 3 до 5 секунд між відео
+
+# ==================== БАНК СЛІВ ДЛЯ КОМЕНТАРІВ (РУССКИЙ) ====================
+
+# Короткие слова (30 слов) - без "оружие" и "бомба"
+short_words = [
+    "круто", "супер", "топ", "класс", "вау", "мега",
+    "красота", "имба", "кайф", "разрыв", "шедевр", "прекрасно",
+    "офигенно", "огонь", "угар", "жизненно", "мудро",
+    "сила", "топчик", "крутяк", "бомбезно", "зачет", "ништяк",
+    "смешно", "прикольно", "реально", "точно", "🔥", "💯", "😍",
+    "крутяк", "зашибись", "отлично", "классно", "шикарно",
+    "пушка", "летсплей", "имбово", "рофл", "краш"
+]
+
+# Длинные слова (60 слов)
+long_words = [
+    "невероятно", "фантастически", "потрясающе", "захватывающе",
+    "восхитительно", "бесподобно", "безупречно", "великолепно",
+    "лучший", "гениально", "профессионально", "талантливо",
+    "мастерски", "креативно", "оригинально", "уникально",
+    "своевременно", "актуально", "глубоко", "содержательно",
+    "информативно", "полезно", "интересно", "познавательно",
+    "вдохновляюще", "мотивирующе", "энергично", "динамично",
+    "эмоционально", "искренне", "тепло", "душевно", "уютно",
+    "гармонично", "изысканно", "элегантно", "стильно",
+    "модно", "современно", "инновационно", "прогрессивно",
+    "качественно", "детально", "тщательно", "ответственно",
+    "надежно", "стабильно", "мощно", "эффективно",
+    "результативно", "продуктивно", "успешно", "перспективно",
+    "масштабно", "амбициозно", "смело", "уверенно",
+    "решительно", "настойчиво", "целеустремленно", "достойно"
+]
+
+# ==================== ФУНКЦІЇ ДЛЯ ГЕНЕРАЦІЇ ====================
+
+def generate_gmail():
+    """
+    Генерирует случайный Gmail
+    Формат: имя.фамилия.число@gmail.com
+    """
+    first_names = [
+        "ivan", "petr", "andrey", "olga", "maria", "oksana",
+        "oleg", "viktor", "natalia", "yuriy", "dmitry", "ekaterina",
+        "maxim", "taras", "bogdan", "anna", "vasiliy", "elena",
+        "alexey", "sergey", "vladimir", "tatyana", "irina", "svetlana"
+    ]
+    
+    last_names = [
+        "ivanov", "petrov", "sidorov", "smirnov", "kozlov",
+        "novikov", "morozov", "volkov", "sokolov", "lebedeva",
+        "popov", "kuznetsov", "vasiliev", "pavlov", "fedorov"
+    ]
+    
+    name = random.choice(first_names)
+    last = random.choice(last_names)
+    number = random.randint(1, 9999)
+    
+    email = f"{name}.{last}{number}@gmail.com"
+    return email.lower()
+
+def generate_comment(comment_type="random"):
+    """
+    Генерирует случайный комментарий
+    comment_type: "short" (30 слов), "long" (60 слов), "random" (случайно)
+    """
+    base = "@Lisscre "
+    
+    # Выбор типа комментария
+    if comment_type == "short":
+        words_pool = short_words
+        num_words = random.randint(1, 3)
+    elif comment_type == "long":
+        words_pool = long_words
+        num_words = random.randint(2, 5)
+    else:  # random
+        if random.choice([True, False]):
+            words_pool = short_words
+            num_words = random.randint(1, 3)
+        else:
+            words_pool = long_words
+            num_words = random.randint(2, 5)
+    
+    chosen_words = random.sample(words_pool, min(num_words, len(words_pool)))
+    comment = base + " ".join(chosen_words)
+    
+    return comment
+
+def generate_password(length=12):
+    """
+    Генерирует случайный пароль
+    """
+    characters = string.ascii_letters + string.digits + "!@#$%^&*"
+    password = ''.join(random.choice(characters) for _ in range(length))
+    return password
+
+# ==================== ФУНКЦІЇ ДЛЯ РОБОТИ З ФАЙЛАМИ ====================
+
+def save_accounts_to_file(accounts, filename="accounts.txt"):
+    """
+    Сохраняет аккаунты в текстовый файл
+    """
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write("=" * 60 + "\n")
+        f.write(f"Сгенерировано: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 60 + "\n\n")
+        
+        for i, account in enumerate(accounts, 1):
+            f.write(f"Аккаунт #{i}:\n")
+            f.write(f"  Email: {account['email']}\n")
+            f.write(f"  Пароль: {account['password']}\n")
+            f.write(f"  Комментариев сделано: {account['comments_count']}\n")
+            f.write("-" * 40 + "\n")
+    
+    print(f"✅ Аккаунты сохранены в {filename}")
+
+def save_accounts_to_pdf(accounts, filename="accounts.pdf"):
+    """
+    Сохраняет аккаунты в PDF файл
+    """
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.units import inch
+        
+        c = canvas.Canvas(filename, pagesize=letter)
+        width, height = letter
+        
+        # Заголовок
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(1*inch, height - 1*inch, "Сгенерированные аккаунты TikTok")
+        
+        c.setFont("Helvetica", 10)
+        c.drawString(1*inch, height - 1.5*inch, f"Дата: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        y = height - 2*inch
+        c.setFont("Helvetica-Bold", 12)
+        
+        for i, account in enumerate(accounts, 1):
+            if y < 1*inch:
+                c.showPage()
+                y = height - 1*inch
+                c.setFont("Helvetica-Bold", 12)
+            
+            c.drawString(0.5*inch, y, f"{i}. {account['email']}")
+            c.drawString(0.5*inch, y - 0.2*inch, f"   Пароль: {account['password']}")
+            c.drawString(0.5*inch, y - 0.4*inch, f"   Комментариев: {account['comments_count']}")
+            y -= 0.8*inch
+        
+        c.save()
+        print(f"✅ Аккаунты сохранены в {filename}")
+        
+    except ImportError:
+        print("⚠️ Для PDF нужна библиотека reportlab. Установите: pip install reportlab")
+        save_accounts_to_file(accounts, "accounts.txt")
+
+def save_comments_to_file(comments_data, filename="comments_log.txt"):
+    """
+    Сохраняет лог комментариев
+    """
+    with open(filename, 'a', encoding='utf-8') as f:
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Сессия: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 60 + "\n")
+        
+        for data in comments_data:
+            f.write(f"\nАккаунт: {data['email']}\n")
+            f.write(f"Видео #{data['video_number']}\n")
+            f.write(f"Комментарий: {data['comment']}\n")
+            f.write(f"Время: {data['timestamp']}\n")
+            f.write("-" * 40 + "\n")
+
+# ==================== ФУНКЦІЇ ДЛЯ TIKTOK ====================
+
+def comment_on_video(driver, video_index, comment_text, account_email):
+    """
+    Комментирует одно видео с проверками
+    """
+    try:
+        # Получаем список видео
+        videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+        if video_index >= len(videos):
+            return False, "Видео не найдено"
+        
+        # Кликаем на видео
+        videos[video_index].click()
+        time.sleep(3)
+        
+        # Находим поле комментария
+        comment_input = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-e2e='comment-input']"))
+        )
+        comment_input.click()
+        time.sleep(1)
+        
+        # Вводим комментарий
+        comment_input.send_keys(comment_text)
+        time.sleep(1)
+        
+        # Отправляем
+        submit_button = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-post']")
+        submit_button.click()
+        
+        print(f"  ✅ {account_email} -> '{comment_text[:50]}...'")
+        time.sleep(2)
+        
+        # Закрываем видео
+        close_button = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+        close_button.click()
+        time.sleep(1)
+        
+        return True, "Успешно"
+        
+    except TimeoutException:
+        print(f"  ⚠️ Таймаут на видео {video_index + 1}")
+        try:
+            close_button = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+            close_button.click()
+        except:
+            pass
+        return False, "Таймаут"
+        
+    except Exception as e:
+        print(f"  ❌ Ошибка: {str(e)[:50]}")
+        try:
+            close_button = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+            close_button.click()
+        except:
+            pass
+        return False, str(e)
+
+def process_tiktok_search(driver, search_query):
+    """
+    Выполняет поиск видео по запросу
+    """
+    try:
+        search = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.NAME, "q"))
+        )
+        search.send_keys(search_query)
+        search.send_keys(Keys.RETURN)
+        time.sleep(5)
+        print(f"\n🔍 Ищем видео: {search_query}\n")
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка поиска: {e}")
+        return False
+
+# ==================== ГОЛОВНА ФУНКЦІЯ ====================
+
+def main():
+    """
+    Главная функция бота
+    """
+    print("=" * 60)
+    print("🤖 TikTok Комментатор Бот v2.0")
+    print("=" * 60)
+    
+    # Список для хранения данных
+    accounts = []
+    all_comments = []
+    
+    # Количество аккаунтов для генерации
+    num_accounts = (VIDEOS_TO_COMMENT + COMMENTS_PER_ACCOUNT - 1) // COMMENTS_PER_ACCOUNT
+    print(f"\n📊 План:")
+    print(f"   - Всего видео: {VIDEOS_TO_COMMENT}")
+    print(f"   - Комментариев на аккаунт: {COMMENTS_PER_ACCOUNT}")
+    print(f"   - Нужно аккаунтов: {num_accounts}")
+    print(f"   - Задержка между комментариями: {DELAY_BETWEEN_COMMENTS[0]}-{DELAY_BETWEEN_COMMENTS[1]} сек")
+    
+    # Инициализация драйвера
+    driver = webdriver.Chrome()
+    driver.get("https://www.tiktok.com")
+    
+    print("\n⚠️ Войдите в аккаунт TikTok вручную и нажмите Enter...")
+    input()
+    
+    # Выполняем поиск
+    if not process_tiktok_search(driver, SEARCH_QUERY):
+        driver.quit()
+        return
+    
+    # Генерируем аккаунты
+    print("\n📧 Генерируем аккаунты...")
+    for i in range(num_accounts):
+        account = {
+            'email': generate_gmail(),
+            'password': generate_password(),
+            'comments_count': 0
+        }
+        accounts.append(account)
+        print(f"   Аккаунт {i+1}: {account['email']} | Пароль: {account['password']}")
+    
+    # Сохраняем аккаунты
+    save_accounts_to_file(accounts)
+    save_accounts_to_pdf(accounts)
+    
+    # Основной цикл комментирования
+    print("\n🚀 Начинаем комментирование...\n")
+    
+    video_index = 0
+    total_comments = 0
+    
+    for account in accounts:
+        print(f"\n{'='*50}")
+        print(f"👤 Используем аккаунт: {account['email']}")
+        print(f"{'='*50}")
+        
+        # Комментируем указанное количество раз
+        for comment_num in range(COMMENTS_PER_ACCOUNT):
+            if video_index >= VIDEOS_TO_COMMENT:
+                print("\n🏁 Достигнуто планового количества видео!")
+                break
+            
+            # Генерируем комментарий (чередуем короткие и длинные)
+            if comment_num % 2 == 0:
+                comment_type = "short"
+            else:
+                comment_type = "long"
+            
+            comment_text = generate_comment(comment_type)
+            
+            # Прокручиваем страницу каждые 5 видео
+            if video_index > 0 and video_index % 5 == 0:
+                driver.execute_script("window.scrollBy(0, 800);")
+                time.sleep(2)
+                print("  📜 Прокручиваем страницу...")
+            
+            # Комментируем видео
+            success, message = comment_on_video(driver, video_index, comment_text, account['email'])
+            
+            if success:
+                total_comments += 1
+                account['comments_count'] += 1
+                
+                # Сохраняем данные комментария
+                all_comments.append({
+                    'email': account['email'],
+                    'video_number': video_index + 1,
+                    'comment': comment_text,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                })
+                
+                video_index += 1
+                
+                # Задержка между комментариями
+                delay = random.uniform(DELAY_BETWEEN_COMMENTS[0], DELAY_BETWEEN_COMMENTS[1])
+                print(f"  ⏱️ Пауза {delay:.1f} сек...")
+                time.sleep(delay)
+            else:
+                print(f"  ⚠️ Не удалось закомментировать: {message}")
+                time.sleep(3)
+            
+            # Если достигли конца видео
+            if video_index >= VIDEOS_TO_COMMENT:
+                break
+        
+        # Если закончили все видео
+        if video_index >= VIDEOS_TO_COMMENT:
+            break
+        
+        # Задержка между аккаунтами
+        if account != accounts[-1]:
+            print(f"\n⏳ Смена аккаунта... (задержка 10 секунд)")
+            time.sleep(10)
+    
+    # Итоги
+    print("\n" + "=" * 60)
+    print("📊 ИТОГИ")
+    print("=" * 60)
+    print(f"✅ Всего сделано комментариев: {total_comments}")
+    print(f"📹 Просмотрено видео: {video_index}")
+    print(f"👥 Использовано аккаунтов: {len([a for a in accounts if a['comments_count'] > 0])}")
+    
+    # Сохраняем лог комментариев
+    save_comments_to_file(all_comments)
+    
+    print("\n💾 Файлы сохранены:")
+    print("   - accounts.txt (аккаунты)")
+    print("   - accounts.pdf (аккаунты в PDF)")
+    print("   - comments_log.txt (лог комментариев)")
+    
+    # Спрашиваем о завершении
+    print("\n🔒 Нажмите Enter для закрытия браузера...")
+    input()
+    
+    driver.quit()
+    print("\n🎉 Работа завершена!")
+
+# ==================== ЗАПУСК ====================
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Прервано пользователем!")
+    except Exception as e:
+        print(f"\n❌ Критическая ошибка: {e}")
+    finally:
+        print("\n👋 Программа завершена.")
