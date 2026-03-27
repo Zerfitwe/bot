@@ -1,0 +1,216 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import random
+import os
+
+# ==================== НАЛАШТУВАННЯ ====================
+
+SEARCH_QUERY = "Децкоє питання"
+COMMENTS_PER_SESSION = 10
+DELAY_BETWEEN_COMMENTS = (5, 10)
+
+# ==================== СЛОВА ДЛЯ КОМЕНТАРІВ ====================
+
+short_words = [
+    "круто", "супер", "топ", "класс", "вау", "мега", "красота",
+    "имба", "кайф", "разрыв", "шедевр", "прекрасно", "офигенно",
+    "огонь", "угар", "жизненно", "мудро", "сила", "топчик",
+    "крутяк", "бомбезно", "зачет", "ништяк", "смешно", "прикольно",
+    "реально", "точно", "🔥", "💯", "😍", "пушка", "имбово", "краш"
+]
+
+long_words = [
+    "невероятно", "фантастически", "потрясающе", "захватывающе",
+    "восхитительно", "бесподобно", "безупречно", "великолепно",
+    "лучший", "гениально", "профессионально", "талантливо",
+    "мастерски", "креативно", "оригинально", "уникально",
+    "вдохновляюще", "мотивирующе", "энергично", "динамично",
+    "эмоционально", "искренне", "душевно", "гармонично",
+    "стильно", "современно", "инновационно", "качественно",
+    "эффективно", "успешно", "масштабно", "уверенно"
+]
+
+# ==================== ФУНКЦІЇ ====================
+
+def generate_comment():
+    base = "@Lisscre "
+    if random.choice([True, False]):
+        num_words = random.randint(1, 3)
+        words = random.sample(short_words, num_words)
+    else:
+        num_words = random.randint(2, 4)
+        words = random.sample(long_words, num_words)
+    return base + " ".join(words)
+
+def save_log(comments):
+    with open("comments_log.txt", "a", encoding="utf-8") as f:
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Сессия: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        for c in comments:
+            f.write(f"{c}\n")
+    print("✅ Лог сохранен")
+
+def wait_for_manual_login(driver):
+    """Очікує поки користувач увійде вручну"""
+    print("\n" + "=" * 60)
+    print("📱 ВХОД В АККАУНТ")
+    print("=" * 60)
+    print("\n1. У вас открыт TikTok в браузере")
+    print("2. Войдите в аккаунт вручную (через email/Google)")
+    print("3. Можете также использовать QR-код с телефона")
+    print("\n⏳ Ожидаем вход...")
+    
+    timeout = 120  # 2 минуты
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout:
+        try:
+            # Проверяем, есть ли аватар (значит вошли)
+            avatar = driver.find_elements(By.CSS_SELECTOR, "[data-e2e='user-avatar']")
+            if avatar:
+                print("\n✅ ВЫПОЛНЕН ВХОД! Начинаем работу...")
+                time.sleep(3)
+                return True
+        except:
+            pass
+        
+        time.sleep(2)
+    
+    print("\n❌ Время ожидания истекло.")
+    return False
+
+# ==================== ЗАПУСК ====================
+
+print("=" * 60)
+print("🤖 TikTok КОММЕНТАТОР (простая версия)")
+print("=" * 60)
+
+# Запускаем Chrome с сохранением сессии
+print("\n📥 Запускаем Chrome...")
+user_data_dir = os.path.join(os.getcwd(), "chrome_session")
+options = webdriver.ChromeOptions()
+options.add_argument(f"--user-data-dir={user_data_dir}")
+options.add_argument("--disable-blink-features=AutomationControlled")
+
+driver = webdriver.Chrome(options=options)
+driver.get("https://www.tiktok.com")
+time.sleep(5)
+
+print("\n" + "=" * 60)
+print("🔐 ВОЙДИТЕ В АККАУНТ")
+print("=" * 60)
+
+# Ждем ручного входа
+if not wait_for_manual_login(driver):
+    print("❌ Вход не выполнен. Завершаем работу.")
+    driver.quit()
+    exit()
+
+# Поиск видео
+print(f"\n🔍 Ищем: {SEARCH_QUERY}")
+try:
+    search = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.NAME, "q"))
+    )
+    search.send_keys(SEARCH_QUERY)
+    search.send_keys(Keys.RETURN)
+    time.sleep(5)
+    print("✅ Поиск выполнен!")
+except Exception as e:
+    print(f"❌ Ошибка поиска: {e}")
+    driver.quit()
+    exit()
+
+# Комментируем
+print(f"\n🚀 Делаем {COMMENTS_PER_SESSION} комментариев...\n")
+
+video_index = 0
+comments_done = 0
+comments_log = []
+
+for i in range(COMMENTS_PER_SESSION):
+    comment = generate_comment()
+    print(f"[{i+1}/{COMMENTS_PER_SESSION}] Комментируем...")
+    
+    if video_index > 0 and video_index % 5 == 0:
+        driver.execute_script("window.scrollBy(0, 800);")
+        time.sleep(2)
+    
+    try:
+        # Находим видео
+        videos = driver.find_elements(By.CSS_SELECTOR, "a[href*='/video/']")
+        if video_index >= len(videos):
+            print("  ⚠️ Видео закончились")
+            break
+        
+        # Открываем видео
+        videos[video_index].click()
+        time.sleep(4)
+        
+        # Ищем поле комментария
+        comment_input = None
+        try:
+            comment_input = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "[data-e2e='comment-input']"))
+            )
+        except:
+            try:
+                comment_input = driver.find_element(By.TAG_NAME, "textarea")
+            except:
+                pass
+        
+        if comment_input:
+            comment_input.click()
+            time.sleep(1)
+            comment_input.send_keys(comment)
+            time.sleep(1)
+            
+            # Отправляем
+            try:
+                submit = driver.find_element(By.CSS_SELECTOR, "[data-e2e='comment-post']")
+                submit.click()
+                print(f"  ✅ {comment[:50]}...")
+                comments_done += 1
+                video_index += 1
+                comments_log.append(f"{time.strftime('%H:%M:%S')} - {comment}")
+                
+                delay = random.uniform(DELAY_BETWEEN_COMMENTS[0], DELAY_BETWEEN_COMMENTS[1])
+                print(f"  ⏱️ Пауза {delay:.1f} сек")
+                time.sleep(delay)
+            except:
+                print(f"  ⚠️ Не найдена кнопка отправки")
+        else:
+            print(f"  ⚠️ Не найдено поле комментария")
+        
+        # Закрываем видео
+        try:
+            close = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+            close.click()
+        except:
+            pass
+        time.sleep(2)
+        
+    except Exception as e:
+        print(f"  ⚠️ Ошибка: {str(e)[:50]}")
+        try:
+            close = driver.find_element(By.CSS_SELECTOR, "[data-e2e='close']")
+            close.click()
+        except:
+            pass
+        time.sleep(2)
+        video_index += 1
+
+save_log(comments_log)
+
+print("\n" + "=" * 60)
+print(f"✅ Сделано комментариев: {comments_done}/{COMMENTS_PER_SESSION}")
+print("=" * 60)
+
+print("\n🔒 Нажмите Enter для закрытия...")
+input()
+driver.quit()
